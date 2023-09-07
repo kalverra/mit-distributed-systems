@@ -8,6 +8,7 @@ import (
 	"github.com/kalverra/lab-1-map-reduce/worker"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/errgroup"
 )
 
 func init() {
@@ -16,12 +17,22 @@ func init() {
 
 func main() {
 	numWorkers := flag.Int("numWorkers", 2, "Number of workers to use")
+	flag.Parse()
+
 	log.Info().Int("Workers", *numWorkers).Msg("Starting")
 
 	workerPorts := make([]int, *numWorkers)
-	for port := 8081; port < 8081+*numWorkers; port++ {
-		worker.New(port)
+
+	eg := errgroup.Group{}
+	for p := 8081; p < 8081+*numWorkers; p++ {
+		port := p
 		workerPorts[port-8081] = port
+		eg.Go(func() error {
+			return worker.New(port)
+		})
+	}
+	if err := eg.Wait(); err != nil {
+		log.Fatal().Err(err).Msg("Failed to start workers")
 	}
 
 	coordinator.New(8080, workerPorts)

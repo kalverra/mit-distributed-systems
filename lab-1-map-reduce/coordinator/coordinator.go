@@ -11,7 +11,7 @@ import (
 var workers []*rpc.Client
 
 func New(port int, workerPorts []int) {
-	log.Info().Interface("Worker Ports", workerPorts).Msg("Starting Coordinator")
+	log.Info().Int("Coordinator Port", port).Interface("Worker Ports", workerPorts).Msg("Starting Coordinator")
 
 	for _, port := range workerPorts {
 		client, err := rpc.Dial("tcp", fmt.Sprintf("localhost:%d", port))

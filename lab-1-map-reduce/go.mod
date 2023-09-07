@@ -2,7 +2,10 @@ module github.com/kalverra/lab-1-map-reduce
 
 go 1.21.0
 
-require github.com/rs/zerolog v1.30.0
+require (
+	github.com/rs/zerolog v1.30.0
+	golang.org/x/sync v0.3.0
+)
 
 require (
 	github.com/mattn/go-colorable v0.1.12 // indirect
