@@ -6,6 +6,11 @@ Google was dealing with tons of data, and they were effectively trying to sort t
 
 A MapReduce is best used when you have a lot of discrete inputs, like webpages. We then apply `Map` to each input in parallel, then `Reduce` the results. It's typical to chain a bunch of these together, using outputs as inputs for other jobs.
 
+## Overview
+
+![Overview](overview.png)
+
 ## Word Count Example
 
-![Alt text](image.png)
+![Word count](word-count.png)
+
