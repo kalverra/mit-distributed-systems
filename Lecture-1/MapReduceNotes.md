@@ -13,4 +13,3 @@ A MapReduce is best used when you have a lot of discrete inputs, like webpages. 
 ## Word Count Example
 
 ![Word count](word-count.png)
-
