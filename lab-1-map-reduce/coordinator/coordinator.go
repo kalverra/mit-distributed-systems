@@ -5,9 +5,11 @@ import (
 	"net/rpc"
 	"os"
 	"path/filepath"
+	"time"
 
 	"github.com/kalverra/lab-1-map-reduce/comms"
 	"github.com/rs/zerolog/log"
+	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -33,15 +35,22 @@ func New(workerPorts []int, numReduce int, inputDir string) {
 	log.Info().Msg("Coordinator Started")
 }
 
-func RegisterMapReduce(m comms.MapFunction, r comms.ReduceFunction) {
-	for _, port := range workers {
-		var reply comms.WorkerReply
-		err := comms.Call(port, "Worker.RegisterMapReduce", &comms.RegisterMapReduce{MapFunction: m, ReduceFunction: r}, &reply)
-		if err != nil {
-			log.Fatal().Int("Port", port).Err(err).Msg("Failed to register map reduce functions")
-		}
+func RegisterMapReduce(m comms.MapFunction, r comms.ReduceFunction) error {
+	eg := errgroup.Group{}
+
+	for _, p := range workers {
+		port := p
+		eg.Go(func() error {
+			var reply comms.WorkerReply
+			return comms.Call(port, "Worker.RegisterMapReduce", &comms.RegisterMapReduce{MapFunction: m, ReduceFunction: r}, &reply)
+		})
 	}
-	log.Info().Msg("Map Reduce Functions Registered")
+
+	if err := eg.Wait(); err != nil {
+		return err
+	}
+	log.Info().Msg("MapReduce Registered")
+	return nil
 }
 
 func Run() error {
@@ -55,14 +64,29 @@ func Run() error {
 		return err
 	}
 
-	// Run Map
-	filepath.WalkDir(inputDir, func(path string, d os.DirEntry, err error) error {
-		return nil
-	})
+	toReduce := mapF()
+	reduceF(toReduce)
 
 	return nil
 }
 
 func IsDone() bool {
 	return done
+}
+
+// mapF walks the input directory and gives each worker a file to map
+// it returns a list of all the answer files for reduce tasks to take on
+func mapF() []string {
+	start := time.Now()
+	filepath.WalkDir(inputDir, func(path string, d os.DirEntry, err error) error {
+		return nil
+	})
+
+	log.Info().Str("Time Taken", time.Since(start).String()).Msg("Map Finished")
+	return nil
+}
+
+// reduceF
+func reduceF(filesToReduce []string) {
+
 }
