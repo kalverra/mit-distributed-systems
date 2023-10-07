@@ -86,4 +86,3 @@ They support the usuals for a file system, along with `snapshot` and `record app
     * If not all replicas send back an ack, primary sends back "Fail" and you gotta try again
 
 * An issue that can come up is "Split Brain", which can often lead to 2 primaries, usually caused by network partition, where there's network issues between master and primary nodes, but everything else is fine.
-* 

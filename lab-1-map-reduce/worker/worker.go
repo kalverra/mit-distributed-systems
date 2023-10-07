@@ -29,11 +29,13 @@ type Worker struct {
 }
 
 // New creates a new worker on a given port
-func New(workerPort, coordinatorPort int) error {
+func New(workerPort, coordinatorPort int, mapFunc comms.MapFunction, reduceFunc comms.ReduceFunction) error {
 	server := rpc.NewServer()
 	worker := Worker{
-		ID:     workerPort,
-		Status: StatusIdle,
+		ID:         workerPort,
+		Status:     StatusIdle,
+		MapFunc:    mapFunc,
+		ReduceFunc: reduceFunc,
 	}
 	server.Register(&worker)
 	l, err := net.Listen("tcp", fmt.Sprintf(":%d", workerPort))
@@ -52,14 +54,6 @@ func New(workerPort, coordinatorPort int) error {
 	}()
 
 	log.Info().Int("ID", worker.ID).Msg("Worker Running")
-	return nil
-}
-
-// RegisterMapReduce registers a map and reduce function to a worker
-func (w *Worker) RegisterMapReduce(call *comms.RegisterMapReduce, reply *comms.WorkerReply) error {
-	w.MapFunc = call.MapFunction
-	w.ReduceFunc = call.ReduceFunction
-	reply.WorkerID = w.ID
 	return nil
 }
 
@@ -87,10 +81,8 @@ func (w *Worker) Reduce(call *comms.ReduceCall, reply *comms.WorkerReply) error 
 	}
 	defer answerFile.Close()
 
-	answerFile.WriteString(w.ReduceFunc(call.Key, call.Values))
-
+	_, err = answerFile.WriteString(w.ReduceFunc(call.Key, call.Values))
 	reply.WorkerID = w.ID
 	reply.ResultFile = answerFileName
-	return nil
-
+	return err
 }

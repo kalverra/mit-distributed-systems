@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"plugin"
 	"regexp"
 	"sort"
 	"strings"
@@ -25,6 +26,7 @@ func init() {
 func main() {
 	numWorkers := flag.Int("numWorkers", 2, "Number of workers to use")
 	numReduce := flag.Int("numReduce", 2, "Number of reduce tasks to use")
+	job := flag.String("job", "word-count", "Job to run")
 	dumb := flag.Bool("dumb", false, "Use dumb word count to generate answers")
 	flag.Parse()
 
@@ -32,6 +34,27 @@ func main() {
 		dumbWordCount()
 		return
 	}
+
+	pluginPath := fmt.Sprintf("./plugins/%s.so", *job)
+	jobRunner, err := plugin.Open(pluginPath)
+	if err != nil {
+		log.Fatal().Str("File", pluginPath).Err(err).Msg("Failed to open plugin")
+	}
+
+	mapLookup, err := jobRunner.Lookup("Map")
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to load map function")
+	}
+
+	reduceLookup, err := jobRunner.Lookup("Reduce")
+	if err != nil {
+		log.Fatal().Err(err).Msg("Failed to load reduce function")
+	}
+
+	mapFunction := mapLookup.(comms.MapFunction)
+	reduceFunction := reduceLookup.(comms.ReduceFunction)
+
+	log.Info().Str("Job", *job).Msg("Loaded Plugin")
 
 	log.Info().Int("Workers", *numWorkers).Msg("Starting")
 
@@ -42,7 +65,7 @@ func main() {
 		port := p
 		workerPorts[port-8081] = port
 		eg.Go(func() error {
-			return worker.New(port, 8080)
+			return worker.New(port, 8080, mapFunction, reduceFunction)
 		})
 	}
 	if err := eg.Wait(); err != nil {
@@ -50,17 +73,6 @@ func main() {
 	}
 
 	coordinator.New(workerPorts, *numReduce, "./books")
-	coordinator.RegisterMapReduce(wordCountMap, wordCountReduce)
-}
-
-func wordCountMap(string, string) []comms.KeyValue {
-	fmt.Println("Map")
-	return []comms.KeyValue{{Key: "key", Value: "val"}}
-}
-
-func wordCountReduce(string, []string) string {
-	fmt.Println("Reduce")
-	return "reduce"
 }
 
 // dumbWordCount is a dumb word count implementation that doesn't use map reduce.

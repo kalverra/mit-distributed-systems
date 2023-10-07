@@ -18,12 +18,6 @@ type MapFunction func(string, string) []KeyValue
 // ReduceFunction represents a reduce function
 type ReduceFunction func(string, []string) string
 
-// RegisterMapReduce represents a way to register a map and reduce function to a worker
-type RegisterMapReduce struct {
-	MapFunction    MapFunction
-	ReduceFunction ReduceFunction
-}
-
 type ReduceCall struct {
 	Key    string
 	Values []string

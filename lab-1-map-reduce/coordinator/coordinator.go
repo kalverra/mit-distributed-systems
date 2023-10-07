@@ -7,9 +7,7 @@ import (
 	"path/filepath"
 	"time"
 
-	"github.com/kalverra/lab-1-map-reduce/comms"
 	"github.com/rs/zerolog/log"
-	"golang.org/x/sync/errgroup"
 )
 
 var (
@@ -21,7 +19,6 @@ var (
 
 func New(workerPorts []int, numReduce int, inputDir string) {
 	log.Info().Interface("Worker Ports", workerPorts).Msg("Starting Coordinator")
-	numReduce = numReduce
 
 	for _, port := range workerPorts {
 		client, err := rpc.Dial("tcp", fmt.Sprintf("localhost:%d", port))
@@ -33,24 +30,6 @@ func New(workerPorts []int, numReduce int, inputDir string) {
 	}
 
 	log.Info().Msg("Coordinator Started")
-}
-
-func RegisterMapReduce(m comms.MapFunction, r comms.ReduceFunction) error {
-	eg := errgroup.Group{}
-
-	for _, p := range workers {
-		port := p
-		eg.Go(func() error {
-			var reply comms.WorkerReply
-			return comms.Call(port, "Worker.RegisterMapReduce", &comms.RegisterMapReduce{MapFunction: m, ReduceFunction: r}, &reply)
-		})
-	}
-
-	if err := eg.Wait(); err != nil {
-		return err
-	}
-	log.Info().Msg("MapReduce Registered")
-	return nil
 }
 
 func Run() error {
