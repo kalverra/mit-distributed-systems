@@ -5,13 +5,11 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"plugin"
 	"regexp"
 	"sort"
 	"strings"
 	"time"
 
-	"github.com/kalverra/lab-1-map-reduce/comms"
 	"github.com/kalverra/lab-1-map-reduce/coordinator"
 	"github.com/kalverra/lab-1-map-reduce/worker"
 	"github.com/rs/zerolog"
@@ -35,26 +33,14 @@ func main() {
 		return
 	}
 
-	pluginPath := fmt.Sprintf("./plugins/%s.so", *job)
-	jobRunner, err := plugin.Open(pluginPath)
-	if err != nil {
-		log.Fatal().Str("File", pluginPath).Err(err).Msg("Failed to open plugin")
+	var mapReduceJob MapReduceJob
+	switch *job {
+	case "word-count":
+		mapReduceJob = &WordCount{}
+	default:
+		log.Warn().Str("Job", *job).Msg("Unknown job, defaulting to word-count")
+		mapReduceJob = &WordCount{}
 	}
-
-	mapLookup, err := jobRunner.Lookup("Map")
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to load map function")
-	}
-
-	reduceLookup, err := jobRunner.Lookup("Reduce")
-	if err != nil {
-		log.Fatal().Err(err).Msg("Failed to load reduce function")
-	}
-
-	mapFunction := mapLookup.(comms.MapFunction)
-	reduceFunction := reduceLookup.(comms.ReduceFunction)
-
-	log.Info().Str("Job", *job).Msg("Loaded Plugin")
 
 	log.Info().Int("Workers", *numWorkers).Msg("Starting")
 
@@ -65,7 +51,7 @@ func main() {
 		port := p
 		workerPorts[port-8081] = port
 		eg.Go(func() error {
-			return worker.New(port, 8080, mapFunction, reduceFunction)
+			return worker.New(port, 8080, mapReduceJob.Map, mapReduceJob.Reduce)
 		})
 	}
 	if err := eg.Wait(); err != nil {

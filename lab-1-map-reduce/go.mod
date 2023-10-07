@@ -1,6 +1,6 @@
 module github.com/kalverra/lab-1-map-reduce
 
-go 1.21.0
+go 1.21
 
 require (
 	github.com/rs/zerolog v1.30.0

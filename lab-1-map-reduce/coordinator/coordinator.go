@@ -32,27 +32,6 @@ func New(workerPorts []int, numReduce int, inputDir string) {
 	log.Info().Msg("Coordinator Started")
 }
 
-func Run() error {
-	done = false
-	defer func() {
-		done = true
-	}()
-
-	err := os.Mkdir("tmp", 0755)
-	if err != nil {
-		return err
-	}
-
-	toReduce := mapF()
-	reduceF(toReduce)
-
-	return nil
-}
-
-func IsDone() bool {
-	return done
-}
-
 // mapF walks the input directory and gives each worker a file to map
 // it returns a list of all the answer files for reduce tasks to take on
 func mapF() []string {
