@@ -12,6 +12,8 @@ import (
 	"github.com/kalverra/lab-1-map-reduce/comms"
 )
 
+var worker *Worker
+
 // Worker represents a worker node
 type Worker struct {
 	ID         int
@@ -23,7 +25,7 @@ type Worker struct {
 // New creates a new worker on a random free port and returns the port
 func New(mapFunc comms.MapFunction, reduceFunc comms.ReduceFunction) (int, error) {
 	server := rpc.NewServer()
-	worker := Worker{
+	worker = &Worker{
 		Status:     comms.StatusIdle,
 		MapFunc:    mapFunc,
 		ReduceFunc: reduceFunc,
@@ -84,7 +86,7 @@ func (w *Worker) Reduce(call *comms.ReduceCall, reply *comms.WorkerReply) error 
 }
 
 // GetStatus returns the status of the worker
-func (w *Worker) GetStatus(call *struct{}, reply *comms.WorkerStatusReply) error {
+func (w *Worker) GetStatus(_ *struct{}, reply *comms.WorkerStatusReply) error {
 	reply.WorkerID = w.ID
 	reply.Status = w.Status
 	return nil

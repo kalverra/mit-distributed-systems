@@ -44,11 +44,11 @@ type WorkerStatusReply struct {
 	Status   string
 }
 
-func Call(workerPort int, function string, args interface{}, reply interface{}) error {
+func Call(workerPort int, function string, args any, reply any) error {
 	client, err := rpc.Dial("tcp", fmt.Sprintf("localhost:%d", workerPort))
 	if err != nil {
 		return err
 	}
 	defer client.Close()
-	return client.Call(fmt.Sprintf("Worker.%s", function), &args, &reply)
+	return client.Call(fmt.Sprintf("Worker.%s", function), args, reply)
 }

@@ -33,13 +33,9 @@ func main() {
 		return
 	}
 
-	var mapReduceJob MapReduceJob
-	switch *job {
-	case "word-count":
-		mapReduceJob = &WordCount{}
-	default:
-		log.Warn().Str("Job", *job).Msg("Unknown job, defaulting to word-count")
-		mapReduceJob = &WordCount{}
+	mapReduceJob, ok := registeredJobs[*job]
+	if !ok {
+		log.Fatal().Str("Job", *job).Msg("Job not found")
 	}
 
 	log.Info().Int("Workers", *numWorkers).Msg("Starting")
@@ -50,7 +46,6 @@ func main() {
 		eg.Go(func() error {
 			port, err := worker.New(mapReduceJob.Map, mapReduceJob.Reduce)
 			workerPortsChan <- port
-			log.Warn().Int("Port", port).Msg("DEBUG")
 			return err
 		})
 	}

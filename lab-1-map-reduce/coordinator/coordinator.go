@@ -68,7 +68,7 @@ func monitorWorkers(chan int) {
 		for _, w := range workers {
 			worker := w
 			go func() {
-				reply := comms.WorkerStatusReply{}
+				reply := &comms.WorkerStatusReply{}
 				err := comms.Call(worker, "GetStatus", struct{}{}, reply)
 				if err != nil {
 					log.Error().Err(err).Int("Worker", worker).Msg("Failed to get status")
