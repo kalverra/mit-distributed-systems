@@ -12,36 +12,28 @@ import (
 	"github.com/kalverra/lab-1-map-reduce/comms"
 )
 
-const (
-	StatusIdle = iota
-	StatusMap
-	StatusReduce
-)
-
 // Worker represents a worker node
 type Worker struct {
 	ID         int
-	Status     int
+	Status     string
 	MapFunc    comms.MapFunction
 	ReduceFunc comms.ReduceFunction
-
-	coordinatorPort int
 }
 
-// New creates a new worker on a given port
-func New(workerPort, coordinatorPort int, mapFunc comms.MapFunction, reduceFunc comms.ReduceFunction) error {
+// New creates a new worker on a random free port and returns the port
+func New(mapFunc comms.MapFunction, reduceFunc comms.ReduceFunction) (int, error) {
 	server := rpc.NewServer()
 	worker := Worker{
-		ID:         workerPort,
-		Status:     StatusIdle,
+		Status:     comms.StatusIdle,
 		MapFunc:    mapFunc,
 		ReduceFunc: reduceFunc,
 	}
-	server.Register(&worker)
-	l, err := net.Listen("tcp", fmt.Sprintf(":%d", workerPort))
+	server.Register(worker)
+	l, err := net.Listen("tcp", ":0")
 	if err != nil {
-		return fmt.Errorf("worker failed to listen: %w", err)
+		return 0, fmt.Errorf("worker failed to listen: %w", err)
 	}
+	worker.ID = l.Addr().(*net.TCPAddr).Port
 	go server.Accept(l)
 
 	shutDown := make(chan os.Signal, 1)
@@ -54,10 +46,12 @@ func New(workerPort, coordinatorPort int, mapFunc comms.MapFunction, reduceFunc 
 	}()
 
 	log.Info().Int("ID", worker.ID).Msg("Worker Running")
-	return nil
+	return worker.ID, nil
 }
 
+// Map runs the map function on the worker
 func (w *Worker) Map(call *comms.KeyValue, reply *comms.WorkerReply) error {
+	w.Status = comms.StatusMap
 	answerFileName := fmt.Sprintf("tmp/%d-%s", w.ID, call.Key)
 	answerFile, err := os.OpenFile(answerFileName, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -73,7 +67,9 @@ func (w *Worker) Map(call *comms.KeyValue, reply *comms.WorkerReply) error {
 	return nil
 }
 
+// Reduce runs the reduce function on the worker
 func (w *Worker) Reduce(call *comms.ReduceCall, reply *comms.WorkerReply) error {
+	w.Status = comms.StatusReduce
 	answerFileName := fmt.Sprintf("tmp/%d-%s", w.ID, call.Key)
 	answerFile, err := os.OpenFile(answerFileName, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {
@@ -85,4 +81,11 @@ func (w *Worker) Reduce(call *comms.ReduceCall, reply *comms.WorkerReply) error 
 	reply.WorkerID = w.ID
 	reply.ResultFile = answerFileName
 	return err
+}
+
+// GetStatus returns the status of the worker
+func (w *Worker) GetStatus(call *struct{}, reply *comms.WorkerStatusReply) error {
+	reply.WorkerID = w.ID
+	reply.Status = w.Status
+	return nil
 }

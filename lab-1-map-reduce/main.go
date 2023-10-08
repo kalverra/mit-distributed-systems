@@ -44,18 +44,24 @@ func main() {
 
 	log.Info().Int("Workers", *numWorkers).Msg("Starting")
 
-	workerPorts := make([]int, *numWorkers)
-
+	workerPortsChan := make(chan int, *numWorkers)
 	eg := errgroup.Group{}
-	for p := 8081; p < 8081+*numWorkers; p++ {
-		port := p
-		workerPorts[port-8081] = port
+	for i := 0; i < *numWorkers; i++ {
 		eg.Go(func() error {
-			return worker.New(port, 8080, mapReduceJob.Map, mapReduceJob.Reduce)
+			port, err := worker.New(mapReduceJob.Map, mapReduceJob.Reduce)
+			workerPortsChan <- port
+			log.Warn().Int("Port", port).Msg("DEBUG")
+			return err
 		})
 	}
 	if err := eg.Wait(); err != nil {
 		log.Fatal().Err(err).Msg("Failed to start workers")
+	}
+	close(workerPortsChan)
+
+	workerPorts := []int{}
+	for port := range workerPortsChan {
+		workerPorts = append(workerPorts, port)
 	}
 
 	coordinator.New(workerPorts, *numReduce, "./books")
