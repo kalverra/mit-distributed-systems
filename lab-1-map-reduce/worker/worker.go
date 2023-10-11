@@ -54,8 +54,10 @@ func New(mapFunc comms.MapFunction, reduceFunc comms.ReduceFunction) (int, error
 // Map runs the map function on the worker
 func (w *Worker) Map(call *comms.KeyValue, reply *comms.WorkerReply) error {
 	w.Status = comms.StatusMap
-	answerFileName := fmt.Sprintf("tmp/%d-%s", w.ID, call.Key)
-	answerFile, err := os.OpenFile(answerFileName, os.O_CREATE|os.O_WRONLY, 0644)
+	defer func() {
+		w.Status = comms.StatusIdle
+	}()
+	answerFile, err := os.CreateTemp("tmp", fmt.Sprintf("%d-%s", w.ID, call.Key))
 	if err != nil {
 		return fmt.Errorf("failed to open answer file: %w", err)
 	}
@@ -65,13 +67,16 @@ func (w *Worker) Map(call *comms.KeyValue, reply *comms.WorkerReply) error {
 		answerFile.WriteString(fmt.Sprintf("%s: %s\n", kv.Key, kv.Value))
 	}
 	reply.WorkerID = w.ID
-	reply.ResultFile = answerFileName
+	reply.ResultFile = answerFile.Name()
 	return nil
 }
 
 // Reduce runs the reduce function on the worker
 func (w *Worker) Reduce(call *comms.ReduceCall, reply *comms.WorkerReply) error {
 	w.Status = comms.StatusReduce
+	defer func() {
+		w.Status = comms.StatusIdle
+	}()
 	answerFileName := fmt.Sprintf("tmp/%d-%s", w.ID, call.Key)
 	answerFile, err := os.OpenFile(answerFileName, os.O_CREATE|os.O_WRONLY, 0644)
 	if err != nil {

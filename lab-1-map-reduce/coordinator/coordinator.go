@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/kalverra/lab-1-map-reduce/comms"
@@ -13,13 +14,14 @@ import (
 )
 
 var (
-	workers       []int
-	numReduce     int
-	inputDir      string
-	done          bool = false
-	data               = make(map[string]string)
-	workerTimeout      = 5 * time.Second
-	pollInterval       = 1 * time.Second
+	workers        []int
+	numReduce      int
+	inputDir       string
+	done           bool = false
+	data                = make(map[string]string)
+	workerStatuses      = make(map[int]string)
+	workerTimeout       = 5 * time.Second
+	pollInterval        = 1 * time.Second
 )
 
 func New(workerPorts []int, numReduce int, inputDir string) {
@@ -51,17 +53,69 @@ func New(workerPorts []int, numReduce int, inputDir string) {
 	log.Info().Msg("Starting Map")
 
 	idleWorkers := make(chan int, 0)
-	monitorWorkers(idleWorkers)
+	go monitorWorkers(idleWorkers)
 
-	for {
+	// Map phase
+	reduceFilesCh := make(chan string, len(data))
+	var wg sync.WaitGroup
+	for key, value := range data {
 		idle := <-idleWorkers
-		log.Debug().Int("ID", idle).Msg("Got Idle Worker")
+		log.Debug().Str("Key", key).Int("Worker", idle).Msg("Got Idle Worker, Assigning Map")
+		go func(key string, value string, idle int) {
+			wg.Add(1)
+			defer wg.Done()
+			call := &comms.KeyValue{
+				Key:   key,
+				Value: value,
+			}
+			reply := &comms.WorkerReply{}
+			err := comms.Call(idle, "Map", call, reply)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to call worker map")
+			} else {
+				reduceFilesCh <- reply.ResultFile
+			}
+		}(key, value, idle)
 	}
 
+	wg.Wait()
+	log.Info().Str("Time Taken", time.Since(startTime).String()).Msg("Map Complete")
+
+	startTime = time.Now()
+
+	log.Info().Msg("Starting Reduce")
+
+	close(reduceFilesCh)
+	reduceFiles := []string{}
+	for file := range reduceFilesCh {
+		reduceFiles = append(reduceFiles, file)
+	}
+
+	// Reduce phase
+	for _, reduceFile := range reduceFiles {
+		idle := <-idleWorkers
+		log.Debug().Str("File", reduceFile).Int("Worker", idle).Msg("Got Idle Worker, Assigning Reduce")
+		go func(reduceFile string, idle int) {
+			wg.Add(1)
+			defer wg.Done()
+			call := &comms.ReduceCall{
+				Key:    reduceFile,
+				Values: []string{},
+			}
+			reply := &comms.WorkerReply{}
+			err := comms.Call(idle, "Reduce", call, reply)
+			if err != nil {
+				log.Error().Err(err).Msg("Failed to call worker reduce")
+			}
+		}(reduceFile, idle)
+	}
+
+	wg.Wait()
+	log.Info().Str("Time Taken", time.Since(startTime).String()).Msg("Reduce Complete")
 }
 
 // monitorWorkers polls the workers for their status and sends any idle ones back on a channel
-func monitorWorkers(chan int) {
+func monitorWorkers(idleWorkers chan int) {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 	for range ticker.C {
@@ -74,7 +128,10 @@ func monitorWorkers(chan int) {
 					log.Error().Err(err).Int("Worker", worker).Msg("Failed to get status")
 					return
 				}
-				log.Debug().Int("Worker", reply.WorkerID).Str("Status", reply.Status).Msg("Got Status")
+				log.Trace().Int("Worker", reply.WorkerID).Str("Status", reply.Status).Msg("Got Status")
+				if reply.Status == comms.StatusIdle {
+					idleWorkers <- reply.WorkerID
+				}
 			}()
 		}
 	}

@@ -5,10 +5,10 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"regexp"
 	"sort"
 	"strings"
 	"time"
+	"unicode"
 
 	"github.com/kalverra/lab-1-map-reduce/coordinator"
 	"github.com/kalverra/lab-1-map-reduce/worker"
@@ -18,7 +18,7 @@ import (
 )
 
 func init() {
-	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr})
+	log.Logger = log.Output(zerolog.ConsoleWriter{Out: os.Stderr}).Level(zerolog.DebugLevel)
 }
 
 func main() {
@@ -59,6 +59,12 @@ func main() {
 		workerPorts = append(workerPorts, port)
 	}
 
+	if _, err := os.Stat("./tmp"); os.IsNotExist(err) {
+		if err := os.Mkdir("./tmp", 0755); err != nil {
+			log.Fatal().Err(err).Msg("Failed to create tmp directory")
+		}
+	}
+
 	coordinator.New(workerPorts, *numReduce, "./books")
 }
 
@@ -73,21 +79,16 @@ func dumbWordCount() {
 	}
 
 	wordCount := map[string]int{}
-	wordRegex := regexp.MustCompile("[^a-zA-Z]+")
+	ff := func(r rune) bool { return !unicode.IsLetter(r) }
 	for _, file := range files {
 		fileContents, err := os.ReadFile(filepath.Join(booksDir, file.Name()))
 		if err != nil {
 			log.Fatal().Err(err).Msgf("Failed to read file %s", file.Name())
 		}
 		fileString := string(fileContents)
-		for _, word := range strings.Split(fileString, " ") {
-			word = wordRegex.ReplaceAllString(word, "")
+		words := strings.FieldsFunc(fileString, ff)
+		for _, word := range words {
 			word = strings.ToLower(word)
-			word = strings.Trim(word, ".,!?[]\n")
-
-			if word == "\n" || word == "" {
-				continue
-			}
 
 			if _, ok := wordCount[word]; !ok {
 				wordCount[word] = 1
