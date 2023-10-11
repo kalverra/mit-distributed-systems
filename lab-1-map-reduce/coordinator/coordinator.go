@@ -13,15 +13,18 @@ import (
 	"github.com/rs/zerolog/log"
 )
 
+// TODO: I think that having the workers ask for jobs rather than a coordinator assigning them is probably a better way to do this.
 var (
-	workers        []int
-	numReduce      int
-	inputDir       string
-	done           bool = false
-	data                = make(map[string]string)
-	workerStatuses      = make(map[int]string)
-	workerTimeout       = 5 * time.Second
-	pollInterval        = 1 * time.Second
+	workers       []int
+	numReduce     int
+	inputDir      string
+	done          bool = false
+	data               = make(map[string]string)
+	workerTimeout      = 5 * time.Second
+	pollInterval       = 100 * time.Millisecond
+
+	idleWorkers   = []int{}
+	idleWorkersMu = sync.Mutex{}
 )
 
 func New(workerPorts []int, numReduce int, inputDir string) {
@@ -52,15 +55,26 @@ func New(workerPorts []int, numReduce int, inputDir string) {
 
 	log.Info().Msg("Starting Map")
 
-	idleWorkers := make(chan int, 0)
-	go monitorWorkers(idleWorkers)
+	go monitorWorkers()
+
+	ticker := time.NewTicker(pollInterval)
 
 	// Map phase
 	reduceFilesCh := make(chan string, len(data))
 	var wg sync.WaitGroup
-	for key, value := range data {
-		idle := <-idleWorkers
+	for range ticker.C {
+		if len(data) == 0 { // No more data to process
+			break
+		}
+		idle, err := getIdleWorker()
+		if err != nil {
+			continue // No idle workers
+		}
 		log.Debug().Str("Key", key).Int("Worker", idle).Msg("Got Idle Worker, Assigning Map")
+	}
+
+	for key, value := range data {
+
 		go func(key string, value string, idle int) {
 			wg.Add(1)
 			defer wg.Done()
@@ -93,7 +107,10 @@ func New(workerPorts []int, numReduce int, inputDir string) {
 
 	// Reduce phase
 	for _, reduceFile := range reduceFiles {
-		idle := <-idleWorkers
+		idle, err := getIdleWorker()
+		if err != nil {
+			continue
+		}
 		log.Debug().Str("File", reduceFile).Int("Worker", idle).Msg("Got Idle Worker, Assigning Reduce")
 		go func(reduceFile string, idle int) {
 			wg.Add(1)
@@ -115,7 +132,7 @@ func New(workerPorts []int, numReduce int, inputDir string) {
 }
 
 // monitorWorkers polls the workers for their status and sends any idle ones back on a channel
-func monitorWorkers(idleWorkers chan int) {
+func monitorWorkers() {
 	ticker := time.NewTicker(pollInterval)
 	defer ticker.Stop()
 	for range ticker.C {
@@ -130,7 +147,9 @@ func monitorWorkers(idleWorkers chan int) {
 				}
 				log.Trace().Int("Worker", reply.WorkerID).Str("Status", reply.Status).Msg("Got Status")
 				if reply.Status == comms.StatusIdle {
-					idleWorkers <- reply.WorkerID
+					idleWorkersMu.Lock()
+					defer idleWorkersMu.Unlock()
+					idleWorkers = append(idleWorkers, reply.WorkerID)
 				}
 			}()
 		}
@@ -158,4 +177,14 @@ func loadData(inputDir string) error {
 
 		return nil
 	})
+}
+
+// getIdleWorker returns the first idle worker available
+func getIdleWorker() (int, error) {
+	idleWorkersMu.Lock()
+	defer idleWorkersMu.Unlock()
+	if len(idleWorkers) == 0 {
+		return -1, fmt.Errorf("no idle workers")
+	}
+	return idleWorkers[0], nil
 }

@@ -14,7 +14,6 @@ import (
 	"github.com/kalverra/lab-1-map-reduce/worker"
 	"github.com/rs/zerolog"
 	"github.com/rs/zerolog/log"
-	"golang.org/x/sync/errgroup"
 )
 
 func init() {
@@ -40,22 +39,12 @@ func main() {
 
 	log.Info().Int("Workers", *numWorkers).Msg("Starting")
 
-	workerPortsChan := make(chan int, *numWorkers)
-	eg := errgroup.Group{}
-	for i := 0; i < *numWorkers; i++ {
-		eg.Go(func() error {
-			port, err := worker.New(mapReduceJob.Map, mapReduceJob.Reduce)
-			workerPortsChan <- port
-			return err
-		})
-	}
-	if err := eg.Wait(); err != nil {
-		log.Fatal().Err(err).Msg("Failed to start workers")
-	}
-	close(workerPortsChan)
-
 	workerPorts := []int{}
-	for port := range workerPortsChan {
+	for i := 0; i < *numWorkers; i++ {
+		port, err := worker.New(mapReduceJob.Map, mapReduceJob.Reduce)
+		if err != nil {
+			log.Fatal().Err(err).Msg("Failed to start worker")
+		}
 		workerPorts = append(workerPorts, port)
 	}
 
